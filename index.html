@@ -94,4 +94,40 @@ document.querySelectorAll('[data-copy-single]').forEach(el=>el.onclick=()=>{cons
 document.querySelectorAll('[data-planburger]').forEach(el=>el.onclick=()=>{const i=Number(el.dataset.planburger),n=Math.max(1,Math.min(10000,Math.floor(Number(document.querySelector('[data-singleqty="'+i+'"]').value)||1)));let cs=counts();cs[i]=Math.min(10000,(Number(cs[i])||0)+n);store('gf-burger-counts',cs);tab='Party Planner';render()});
 };render();
 </script>
+
+<script>
+/* Gather & Flame: selected menu, additions and bulk sauce production */
+const menuExtras=[
+["Extra American cheese", "American cheese slices",1,"each"],
+["Extra mature cheddar", "Mature cheddar slices",1,"each"],
+["Extra smoked bacon", "Smoked streaky bacon",2,"rashers"],
+["Extra pickles", "Dill pickle slices",4,"each"],
+["Extra caramelised onions", "Caramelised onions",30,"g"],
+["Extra jalapeños", "Candied jalapeños",25,"g"],
+["Extra mushrooms", "Mushrooms",50,"g"],
+["Chips portion", "Chips (frozen or prepared)",200,"g"],
+["Sweet potato fries portion", "Sweet potato fries",200,"g"],
+["Side salad portion", "Mixed salad ingredients",100,"g"],
+["Garlic bread portion", "Garlic bread",1,"portion"]
+];
+const sauceNames=["House burger sauce","Creamy peppercorn sauce","Truffle mayonnaise","Smoky BBQ glaze","Gochujang mayonnaise","Roasted garlic mayonnaise","Chipotle mayo & hot honey","Maple-chipotle mayonnaise","Lemon-dill mayonnaise","Bone marrow peppercorn sauce"];
+function menuState(){const v=saved('gf-selected-menu',null);return v&&Array.isArray(v.burgers)&&Array.isArray(v.extras)?v:{burgers:Array(10).fill(0),extras:Array(menuExtras.length).fill(0),sauceExtra:Array(10).fill(0),sauceBatch:Array(10).fill(0)}}
+function groupRows(i){const b=burgerSpecs[i],g=burgerGroups[i];return {mix:b.items.filter(x=>g.mix.includes(x[0])),sauce:b.items.filter(x=>g.sauce.includes(x[0])),other:b.items.filter(x=>!g.mix.includes(x[0])&&!g.sauce.includes(x[0]))}}
+function combinedMenu(s){const groups={mix:new Map(),other:new Map(),sauce:new Map(),extras:new Map()};const add=(group,name,q,unit)=>{let key=name+'|'+unit,old=groups[group].get(key)||{name,unit,amount:0};old.amount+=q;groups[group].set(key,old)};
+burgerSpecs.forEach((b,i)=>{let n=Number(s.burgers[i])||0,extra=Number(s.sauceExtra?.[i])||0,batch=Number(s.sauceBatch?.[i])||0,r=groupRows(i);r.mix.forEach(x=>add('mix',x[0],x[1]*n,x[2]));r.other.forEach(x=>add('other',x[0],x[1]*n,x[2]));r.sauce.forEach(x=>add('sauce',x[0],x[1]*(n+extra+batch),x[2]))});
+menuExtras.forEach((e,i)=>{let n=Number(s.extras[i])||0;if(n)add('extras',e[1],e[2]*n,e[3])});return Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,[...v.values()].filter(x=>x.amount>0).sort((a,b)=>a.name.localeCompare(b.name))]))}
+function menuText(s){let groups=combinedMenu(s),out=['GATHER & FLAME — SELECTED MENU','',...burgerSpecs.map((b,i)=>s.burgers[i]>0?b.name+': '+s.burgers[i]:'').filter(Boolean),'',...menuExtras.map((e,i)=>s.extras[i]>0?e[0]+': '+s.extras[i]:'').filter(Boolean),''];for(const [key,title] of [['mix','MEAT MIXES'],['other','BUNS & TOPPINGS'],['sauce','BULK SAUCE INGREDIENTS'],['extras','ADDITIONAL EXTRAS & SIDES']]){out.push(title);out.push(...groups[key].map(x=>'☐ '+x.name+' — '+qty(x.amount)+' '+x.unit));out.push('')}return out.join('\n')}
+function menuPage(){const s=menuState(),total=s.burgers.reduce((a,b)=>a+(Number(b)||0),0);return '<section class="hero"><h2>Build Your Menu</h2><p>Choose your burgers, extras and sides. Then calculate everything to buy — including the ingredients to make signature sauces in bulk.</p></section><h2>1. Select burgers</h2><div class="grid">'+burgerSpecs.map((b,i)=>'<div class="card"><h3>'+safe(b.name)+'</h3><label>Number of burgers<input data-menu-burger="'+i+'" type="number" min="0" max="10000" step="1" value="'+(s.burgers[i]||0)+'"></label><p class="muted">Sauce: '+safe(sauceNames[i])+'</p></div>').join('')+'</div><h2>2. Add extras and sides</h2><div class="grid">'+menuExtras.map((e,i)=>'<div class="card"><label>'+safe(e[0])+'<input data-menu-extra="'+i+'" type="number" min="0" max="10000" step="1" value="'+(s.extras[i]||0)+'"></label><p class="muted">Each adds '+qty(e[2])+' '+safe(e[3])+'</p></div>').join('')+'</div><h2>3. Make sauces in bulk</h2><p>The sauce for each selected burger is included automatically. Enter extra sauce servings to make for dipping or serving separately, or add a standalone batch even when you are not making that burger.</p><div class="grid">'+burgerSpecs.map((b,i)=>'<div class="card"><h3>'+safe(sauceNames[i])+'</h3><p class="muted">For '+(s.burgers[i]||0)+' selected burgers</p><label>Extra servings for dipping<input data-menu-sauceextra="'+i+'" type="number" min="0" max="10000" step="1" value="'+(s.sauceExtra?.[i]||0)+'"></label><label>Additional standalone sauce servings<input data-menu-saucebatch="'+i+'" type="number" min="0" max="10000" step="1" value="'+(s.sauceBatch?.[i]||0)+'"></label><details><summary>Bulk sauce ingredients</summary><div data-menu-sauce-list="'+i+'"></div></details></div>').join('')+'</div><h2>4. Your shopping list</h2><div class="card"><h3 id="menu-total">'+total+' burgers selected</h3><div class="row"><button id="menu-copy">Copy shopping list</button><button id="menu-print">Print</button><button id="menu-clear">Clear menu</button></div><p id="menu-message" class="muted"></p><div id="menu-shopping"></div></div><p class="muted">All amounts are estimated recipe quantities, not supermarket pack sizes. Allow extra for preparation waste. Sauces are scaled by servings, and very small spice amounts may need rounding up for accurate measuring.</p>'}
+function menuRefresh(){const s=menuState(),g=combinedMenu(s);$('#menu-total').textContent=s.burgers.reduce((a,b)=>a+(Number(b)||0),0)+' burgers selected';const block=(title,items)=>'<h3>'+title+'</h3>'+(items.length?'<ul>'+items.map(x=>'<li><label><input type="checkbox" style="width:auto;margin:0 8px 0 0">'+safe(x.name)+' — '+qty(x.amount)+' '+safe(x.unit)+'</label></li>').join('')+'</ul>':'<p class="muted">No items selected</p>');$('#menu-shopping').innerHTML=block('🥩 Meat mixes',g.mix)+block('🍔 Buns & toppings',g.other)+block('🥣 Ingredients for bulk sauces',g.sauce)+block('🍟 Extras & sides',g.extras);
+burgerSpecs.forEach((b,i)=>{let servings=(Number(s.burgers[i])||0)+(Number(s.sauceExtra?.[i])||0)+(Number(s.sauceBatch?.[i])||0);const sauce=groupRows(i).sauce;const el=document.querySelector('[data-menu-sauce-list="'+i+'"]');if(el)el.innerHTML='<p>For '+servings+' sauce servings:</p><ul>'+sauce.map(x=>'<li>'+safe(x[0])+': '+qty(x[1]*servings)+' '+safe(x[2])+'</li>').join('')+'</ul>'})}
+const renderBeforeMenu=render;
+render=function(){if(tab!=='Build Your Menu')return renderBeforeMenu();nav();$('#app').innerHTML=menuPage();menuRefresh();
+for(const [attr,key] of [['data-menu-burger','burgers'],['data-menu-extra','extras'],['data-menu-sauceextra','sauceExtra'],['data-menu-saucebatch','sauceBatch']]){document.querySelectorAll('['+attr+']').forEach(el=>el.oninput=()=>{const s=menuState(),i=Number(el.getAttribute(attr));s[key][i]=Math.max(0,Math.min(10000,Math.floor(Number(el.value)||0)));store('gf-selected-menu',s);menuRefresh()})}
+$('#menu-copy').onclick=()=>{if(navigator.clipboard?.writeText)navigator.clipboard.writeText(menuText(menuState())).then(()=>$('#menu-message').textContent='Shopping list copied ✓').catch(()=>$('#menu-message').textContent='Copy unavailable');else $('#menu-message').textContent='Copy unavailable'};
+$('#menu-print').onclick=()=>{const w=window.open('','_blank');if(!w){$('#menu-message').textContent='Allow pop-ups to print';return}const p=w.document.createElement('pre');p.textContent=menuText(menuState());p.style.cssText='font:16px/1.7 system-ui;white-space:pre-wrap;padding:24px';w.document.body.appendChild(p);w.document.title='Gather & Flame Menu Shopping List';w.print()};
+$('#menu-clear').onclick=()=>{store('gf-selected-menu',{burgers:Array(10).fill(0),extras:Array(menuExtras.length).fill(0),sauceExtra:Array(10).fill(0),sauceBatch:Array(10).fill(0)});render()};
+};
+tabs.splice(3,0,'Build Your Menu');
+render();
+</script>
 </body></html>
